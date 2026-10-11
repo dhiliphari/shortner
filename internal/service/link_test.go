@@ -3,6 +3,7 @@ package service_test
 import (
 	"context"
 	"errors"
+	"sync"
 	"testing"
 
 	"github.com/dhiliphari/shortner/internal/repository"
@@ -65,5 +66,33 @@ func TestResolve_NotFound(t *testing.T) {
 	_, err := svc.Resolve(context.Background(), "nope")
 	if !errors.Is(err, service.ErrNotFound) {
 		t.Errorf("got %v, want ErrNotFound", err)
+	}
+}
+
+func TestConcurrentResolve_Stats(t *testing.T) {
+	svc := service.New(repository.NewMemoryRepository())
+
+	link, err := svc.Shorten(context.Background(), "https://test.com")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	wg := sync.WaitGroup{}
+	for range 100 {
+		wg.Go(func() {
+			if _, err := svc.Resolve(context.Background(), link.Code); err != nil {
+				t.Error(err)
+			}
+		})
+	}
+	wg.Wait()
+
+	link, err = svc.Stats(context.Background(), link.Code)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if link.Clicks != 100 {
+		t.Errorf("clicks = %d, expected 100", link.Clicks)
 	}
 }
