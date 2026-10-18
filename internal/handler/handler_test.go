@@ -72,10 +72,31 @@ func TestShorten(t *testing.T) {
 	}
 }
 
+func TestShorten_Alias(t *testing.T) {
+	h, _ := newTestHandler(t)
+
+	post := func(body string) *httptest.ResponseRecorder {
+		req := httptest.NewRequest(http.MethodPost, "/shorten", strings.NewReader(body))
+		rec := httptest.NewRecorder()
+		h.ServeHTTP(rec, req)
+		return rec
+	}
+
+	if rec := post(`{"url":"https://go.dev", "alias":"golang"}`); rec.Code != http.StatusCreated {
+		t.Fatalf("first create: status = %d, want 201", rec.Code)
+	}
+	if rec := post(`{"url":"https://example.com", "alias":"golang"}`); rec.Code != http.StatusConflict {
+		t.Fatalf("duplicate alias: status = %d, want 409", rec.Code)
+	}
+	if rec := post(`{"url":"https://example.com", "alias":"a b!"}`); rec.Code != http.StatusBadRequest {
+		t.Fatalf("bad alias: status = %d, want 400", rec.Code)
+	}
+}
+
 func TestRedirect(t *testing.T) {
 	h, svc := newTestHandler(t)
 
-	link, err := svc.Shorten(context.Background(), "https://go.dev")
+	link, err := svc.Shorten(context.Background(), "https://go.dev", "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -107,7 +128,7 @@ func TestRedirect_NotFound(t *testing.T) {
 func TestStats_CountsRedirects(t *testing.T) {
 	h, svc := newTestHandler(t)
 
-	link, err := svc.Shorten(context.Background(), "https://go.dev")
+	link, err := svc.Shorten(context.Background(), "https://go.dev", "")
 	if err != nil {
 		t.Fatal(err)
 	}

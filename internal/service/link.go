@@ -7,6 +7,8 @@ import (
 	"fmt"
 	"math/big"
 	"net/url"
+	"regexp"
+	"strings"
 	"time"
 
 	"github.com/dhiliphari/shortner/internal/model"
@@ -20,9 +22,22 @@ const (
 )
 
 var (
-	ErrInvalidURL = errors.New("invalid url")
-	ErrNotFound   = repository.ErrNotFound
+	ErrInvalidURL   = errors.New("invalid url")
+	ErrInvalidAlias = errors.New("invalid alias")
+	ErrAliasTaken   = repository.ErrCodeExists
+	ErrNotFound     = repository.ErrNotFound
 )
+
+var aliasPattern = regexp.MustCompile("^[a-zA-Z0-9_-]{3,32}$")
+
+var reservedAlias = map[string]bool{"shorten": true, "stats": true, "api": true, "health": true}
+
+func validateAlias(alias string) error {
+	if !aliasPattern.MatchString(alias) || reservedAlias[strings.ToLower(alias)] {
+		return ErrInvalidAlias
+	}
+	return nil
+}
 
 type LinkService struct {
 	repo repository.LinkRepository
@@ -32,10 +47,24 @@ func New(repo repository.LinkRepository) *LinkService {
 	return &LinkService{repo: repo}
 }
 
-func (s *LinkService) Shorten(ctx context.Context, rawURL string) (model.Link, error) {
+func (s *LinkService) Shorten(ctx context.Context, rawURL string, alias string) (model.Link, error) {
 	u, err := url.Parse(rawURL)
 	if err != nil || (u.Scheme != "http" && u.Scheme != "https") || u.Host == "" {
 		return model.Link{}, ErrInvalidURL
+	}
+
+	if alias != "" {
+		if err := validateAlias(alias); err != nil {
+			return model.Link{}, err
+		}
+		link := model.Link{Code: alias, URL: rawURL, CreatedAt: time.Now().UTC()}
+		if err := s.repo.Create(ctx, link); err != nil {
+			if errors.Is(err, repository.ErrCodeExists) {
+				return model.Link{}, ErrAliasTaken
+			}
+			return model.Link{}, fmt.Errorf("create link: %w", err)
+		}
+		return link, nil
 	}
 
 	for range maxRetries {

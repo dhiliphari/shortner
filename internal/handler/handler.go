@@ -27,7 +27,8 @@ func (h *Handler) Routes() http.Handler {
 }
 
 type shortenRequest struct {
-	URL string `json:"url"`
+	URL   string `json:"url"`
+	Alias string `json:"alias"`
 }
 
 type shortenResponse struct {
@@ -43,11 +44,15 @@ func (h *Handler) shorten(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "invalid JSON body")
 	}
 
-	link, err := h.svc.Shorten(r.Context(), req.URL)
+	link, err := h.svc.Shorten(r.Context(), req.URL, req.Alias)
 	switch {
 	case errors.Is(err, service.ErrInvalidURL):
 		writeError(w, http.StatusBadRequest, "url must be a valid http or https URL")
 		return
+	case errors.Is(err, service.ErrInvalidAlias):
+		writeError(w, http.StatusBadRequest, "alias must be 3-32 characters: letters, digits, '-' or '_'")
+	case errors.Is(err, service.ErrAliasTaken):
+		writeError(w, http.StatusConflict, "alias already in use")
 	case err != nil:
 		slog.Error("shorten failed", "err", err)
 		writeError(w, http.StatusInternalServerError, "internal server error")

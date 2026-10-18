@@ -3,6 +3,7 @@ package service_test
 import (
 	"context"
 	"errors"
+	"strings"
 	"sync"
 	"testing"
 
@@ -15,20 +16,26 @@ func TestShorten_Validation(t *testing.T) {
 		name    string
 		url     string
 		wantErr error
+		alias   string
 	}{
-		{"valid https", "https://example.com/path?q=1", nil},
-		{"valid http", "http://example.com", nil},
-		{"missing scheme", "example.com", service.ErrInvalidURL},
-		{"unsupported scheme", "ftp://example.com", service.ErrInvalidURL},
-		{"no host", "https://", service.ErrInvalidURL},
-		{"empty", "", service.ErrInvalidURL},
+		{"valid https", "https://example.com/path?q=1", nil, ""},
+		{"valid http", "http://example.com", nil, ""},
+		{"missing scheme", "example.com", service.ErrInvalidURL, ""},
+		{"unsupported scheme", "ftp://example.com", service.ErrInvalidURL, ""},
+		{"no host", "https://", service.ErrInvalidURL, ""},
+		{"empty", "", service.ErrInvalidURL, ""},
+
+		{"valid alias", "https://example.com", nil, "example"},
+		{"short alias", "https://example.com", service.ErrInvalidAlias, "ex"},
+		{"long alias", "https://example.com", service.ErrInvalidAlias, strings.Repeat("a", 40)},
+		{"invalid alias", "https://example.com", service.ErrInvalidAlias, "abc@123#"},
 	}
 
 	svc := service.New(repository.NewMemoryRepository())
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			_, err := svc.Shorten(context.Background(), tc.url)
+			_, err := svc.Shorten(context.Background(), tc.url, tc.alias)
 			if !errors.Is(err, tc.wantErr) {
 				t.Errorf("got error %v, want %v", err, tc.wantErr)
 			}
@@ -40,7 +47,7 @@ func TestResolve_CountsClick(t *testing.T) {
 	ctx := context.Background()
 	svc := service.New(repository.NewMemoryRepository())
 
-	link, err := svc.Shorten(ctx, "https://test.com")
+	link, err := svc.Shorten(ctx, "https://test.com", "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -72,7 +79,7 @@ func TestResolve_NotFound(t *testing.T) {
 func TestConcurrentResolve_Stats(t *testing.T) {
 	svc := service.New(repository.NewMemoryRepository())
 
-	link, err := svc.Shorten(context.Background(), "https://test.com")
+	link, err := svc.Shorten(context.Background(), "https://test.com", "")
 	if err != nil {
 		t.Fatal(err)
 	}
