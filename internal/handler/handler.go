@@ -71,7 +71,7 @@ func (h *Handler) stats(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, "internal server error")
 		return
 	}
-	writeJSON(w, http.StatusCreated, link)
+	writeJSON(w, http.StatusOK, link)
 }
 
 func (h *Handler) redirect(w http.ResponseWriter, r *http.Request) {
