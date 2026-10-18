@@ -135,3 +135,41 @@ func TestStats_CountsRedirects(t *testing.T) {
 		t.Errorf("url = %q, want https://go.dev", got.URL)
 	}
 }
+
+func TestEndToEnd(t *testing.T) {
+	h, _ := newTestHandler(t)
+	srv := httptest.NewServer(h)
+	defer srv.Close()
+
+	client := &http.Client{
+		CheckRedirect: func(*http.Request, []*http.Request) error {
+			return http.ErrUseLastResponse
+		},
+	}
+
+	// 1. Create a short link
+	resp, err := client.Post(srv.URL+"/shorten", "application/json", strings.NewReader(`{"url":"https://go.dev"}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+
+	var created struct{ Code string }
+	if err := json.NewDecoder(resp.Body).Decode(&created); err != nil {
+		t.Fatal(err)
+	}
+
+	// 2. Follow it
+	resp2, err := client.Get(srv.URL + "/" + created.Code)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp2.Body.Close()
+
+	if resp2.StatusCode != http.StatusFound {
+		t.Errorf("status = %d, want 302", resp2.StatusCode)
+	}
+	if loc := resp2.Header.Get("Location"); loc != "https://go.dev" {
+		t.Errorf("Location = %q, want https://go.dev", loc)
+	}
+}
